@@ -3,10 +3,11 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "install:all": "npm.cmd --prefix server install && npm.cmd --prefix client install",
-    "dev": "concurrently \"npm.cmd --prefix server run dev\" \"npm.cmd --prefix client run dev\"",
-    "server": "npm.cmd --prefix server run dev",
-    "client": "npm.cmd --prefix client run dev"
+    "install:all": "npm --prefix server install && npm --prefix client install",
+    "build": "npm --prefix client run build",
+    "dev": "concurrently \"npm --prefix server run dev\" \"npm --prefix client run dev\"",
+    "server": "npm --prefix server run dev",
+    "client": "npm --prefix client run dev"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"
