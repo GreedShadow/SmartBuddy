@@ -1,0 +1,10 @@
+import { Router } from 'express';
+import { authenticate, authorize } from '../middleware/auth.js';
+import { asyncHandler } from '../middleware/errorHandler.js';
+import { deleteGrade, listGrades, saveGrade } from '../controllers/academic.controller.js';
+const router = Router();
+router.get('/', authenticate, asyncHandler(listGrades));
+router.post('/', authenticate, authorize('admin', 'teacher'), asyncHandler(saveGrade));
+router.put('/:id', authenticate, authorize('admin', 'teacher'), asyncHandler(saveGrade));
+router.delete('/:id', authenticate, authorize('admin', 'teacher'), asyncHandler(deleteGrade));
+export default router;

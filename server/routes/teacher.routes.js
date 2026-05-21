@@ -1,0 +1,10 @@
+import { Router } from 'express';
+import { authenticate, authorize } from '../middleware/auth.js';
+import { asyncHandler } from '../middleware/errorHandler.js';
+import { deleteTeacher, listTeachers, upsertTeacher } from '../controllers/core.controller.js';
+const router = Router();
+router.get('/', authenticate, asyncHandler(listTeachers));
+router.post('/', authenticate, authorize('admin'), asyncHandler(upsertTeacher));
+router.put('/:id', authenticate, authorize('admin'), asyncHandler(upsertTeacher));
+router.delete('/:id', authenticate, authorize('admin'), asyncHandler(deleteTeacher));
+export default router;
