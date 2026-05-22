@@ -47,6 +47,43 @@ const comments = [
   { id: 3, student_id: 3, student_name: 'Carlo Mendoza', teacher_id: 1, teacher_name: 'Maria Santos', comment: 'Excellent science performance this quarter.', created_at: '2026-05-03' }
 ];
 
+function nextId(rows) {
+  return rows.length ? Math.max(...rows.map((row) => Number(row.id) || 0)) + 1 : 1;
+}
+
+function remarksFor(average) {
+  return average < 75 ? 'Failed' : average < 82 ? 'Needs Improvement' : 'Passed';
+}
+
+function classNameFor(classId) {
+  return classes.find((item) => item.id === Number(classId))?.name || '';
+}
+
+function subjectNameFor(subjectId) {
+  return subjects.find((item) => item.id === Number(subjectId))?.name || '';
+}
+
+function studentNameFor(studentId) {
+  return students.find((item) => item.id === Number(studentId))?.name || '';
+}
+
+function groupedReportGrades(studentId) {
+  const bySubject = new Map();
+  for (const grade of grades.filter((item) => item.student_id === studentId)) {
+    const key = `${grade.subject_id}-${grade.term || 'Term'}`;
+    bySubject.set(key, grade);
+  }
+  return [...bySubject.values()].sort((a, b) => a.subject_name.localeCompare(b.subject_name));
+}
+
+function attendanceSummary(studentId) {
+  return Object.entries(
+    attendance
+      .filter((row) => row.student_id === studentId)
+      .reduce((summary, row) => ({ ...summary, [row.status]: (summary[row.status] || 0) + 1 }), {})
+  ).map(([status, count]) => ({ status, count }));
+}
+
 function json(res, status, data) {
   res.status(status).setHeader('Content-Type', 'application/json');
   res.end(JSON.stringify(data));
@@ -101,28 +138,157 @@ export default async function handler(req, res) {
     const safeUser = { id: user.id, name: user.name, email: user.email, role: user.role };
     return json(res, 200, { token: `demo-token-${user.id}`, user: safeUser });
   }
+  if (resource === 'auth' && parts[1] === 'register' && req.method === 'POST') {
+    const body = await parseBody(req);
+    if (users.some((user) => user.email === body.email)) return json(res, 409, { message: 'Email is already registered.' });
+    const row = { id: nextId(users), name: body.name, email: body.email, password: body.password || 'password123', role: body.role || 'student' };
+    users.push(row);
+    return json(res, 201, { id: row.id, name: row.name, email: row.email, role: row.role });
+  }
 
   if (resource === 'analytics') return json(res, 200, analytics());
-  if (resource === 'students' && id) return json(res, 200, { student: students.find((student) => student.id === id), grades: grades.filter((grade) => grade.student_id === id), attendance: attendance.filter((row) => row.student_id === id), comments: comments.filter((comment) => comment.student_id === id) });
+  if (resource === 'users') return json(res, 200, users.map(({ password, ...user }) => user));
+  if (resource === 'students' && id && req.method === 'GET') return json(res, 200, { student: students.find((student) => student.id === id), grades: grades.filter((grade) => grade.student_id === id), attendance: attendance.filter((row) => row.student_id === id), comments: comments.filter((comment) => comment.student_id === id) });
+  if (resource === 'students' && req.method === 'POST') {
+    const body = await parseBody(req);
+    const userId = body.user_id || nextId(users);
+    if (!body.user_id) users.push({ id: userId, name: body.name, email: body.email, password: body.password || 'password123', role: 'student' });
+    const row = { id: nextId(students), user_id: userId, student_no: body.student_no, name: body.name || `Student ${userId}`, email: body.email || '', class_id: Number(body.class_id) || null, class_name: classNameFor(body.class_id), guardian_name: body.guardian_name || '', guardian_phone: body.guardian_phone || '', address: body.address || '' };
+    students.push(row);
+    const classRow = classes.find((item) => item.id === row.class_id);
+    if (classRow) classRow.student_count = Number(classRow.student_count || 0) + 1;
+    return json(res, 201, row);
+  }
+  if (resource === 'students' && req.method === 'PUT' && id) {
+    const body = await parseBody(req);
+    const index = students.findIndex((row) => row.id === id);
+    if (index === -1) return json(res, 404, { message: 'Student not found.' });
+    students[index] = { ...students[index], ...body, class_id: Number(body.class_id) || null, class_name: classNameFor(body.class_id) };
+    return json(res, 200, students[index]);
+  }
+  if (resource === 'students' && req.method === 'DELETE' && id) {
+    const index = students.findIndex((row) => row.id === id);
+    if (index > -1) students.splice(index, 1);
+    return json(res, 200, { message: 'Student deleted.' });
+  }
   if (resource === 'students') return json(res, 200, students);
+  if (resource === 'teachers' && req.method === 'POST') {
+    const body = await parseBody(req);
+    const userId = body.user_id || nextId(users);
+    if (!body.user_id) users.push({ id: userId, name: body.name, email: body.email, password: body.password || 'password123', role: 'teacher' });
+    const row = { id: nextId(teachers), user_id: userId, employee_no: body.employee_no, name: body.name || `Teacher ${userId}`, email: body.email || '', department: body.department || '', phone: body.phone || '' };
+    teachers.push(row);
+    return json(res, 201, row);
+  }
+  if (resource === 'teachers' && req.method === 'PUT' && id) {
+    const body = await parseBody(req);
+    const index = teachers.findIndex((row) => row.id === id);
+    if (index === -1) return json(res, 404, { message: 'Teacher not found.' });
+    teachers[index] = { ...teachers[index], ...body };
+    return json(res, 200, teachers[index]);
+  }
+  if (resource === 'teachers' && req.method === 'DELETE' && id) {
+    const index = teachers.findIndex((row) => row.id === id);
+    if (index > -1) teachers.splice(index, 1);
+    return json(res, 200, { message: 'Teacher deleted.' });
+  }
   if (resource === 'teachers') return json(res, 200, teachers);
+  if (resource === 'subjects' && req.method === 'POST') {
+    const body = await parseBody(req);
+    const row = { id: nextId(subjects), code: body.code, name: body.name, description: body.description || '' };
+    subjects.push(row);
+    return json(res, 201, row);
+  }
+  if (resource === 'subjects' && req.method === 'PUT' && id) {
+    const body = await parseBody(req);
+    const index = subjects.findIndex((row) => row.id === id);
+    if (index === -1) return json(res, 404, { message: 'Subject not found.' });
+    subjects[index] = { ...subjects[index], ...body };
+    grades.filter((grade) => grade.subject_id === id).forEach((grade) => { grade.subject_name = subjects[index].name; });
+    attendance.filter((row) => row.subject_id === id).forEach((row) => { row.subject_name = subjects[index].name; });
+    return json(res, 200, subjects[index]);
+  }
+  if (resource === 'subjects' && req.method === 'DELETE' && id) {
+    const index = subjects.findIndex((row) => row.id === id);
+    if (index > -1) subjects.splice(index, 1);
+    return json(res, 200, { message: 'Subject deleted.' });
+  }
   if (resource === 'subjects') return json(res, 200, subjects);
+  if (resource === 'classes' && req.method === 'POST') {
+    const body = await parseBody(req);
+    const row = { id: nextId(classes), name: body.name, grade_level: body.grade_level, section: body.section, adviser_teacher_id: Number(body.adviser_teacher_id) || null, student_count: 0 };
+    classes.push(row);
+    return json(res, 201, row);
+  }
+  if (resource === 'classes' && req.method === 'PUT' && id) {
+    const body = await parseBody(req);
+    const index = classes.findIndex((row) => row.id === id);
+    if (index === -1) return json(res, 404, { message: 'Class not found.' });
+    classes[index] = { ...classes[index], ...body, adviser_teacher_id: Number(body.adviser_teacher_id) || null };
+    students.filter((student) => student.class_id === id).forEach((student) => { student.class_name = classes[index].name; });
+    grades.filter((grade) => grade.class_id === id).forEach((grade) => { grade.class_name = classes[index].name; });
+    attendance.filter((row) => row.class_id === id).forEach((row) => { row.class_name = classes[index].name; });
+    return json(res, 200, classes[index]);
+  }
+  if (resource === 'classes' && req.method === 'DELETE' && id) {
+    const index = classes.findIndex((row) => row.id === id);
+    if (index > -1) classes.splice(index, 1);
+    return json(res, 200, { message: 'Class deleted.' });
+  }
   if (resource === 'classes') return json(res, 200, classes);
+  if (resource === 'grades' && req.method === 'POST') {
+    const body = await parseBody(req);
+    const average = Number(((Number(body.quiz) + Number(body.activity) + Number(body.exam) + Number(body.final_grade)) / 4).toFixed(2));
+    const row = { id: nextId(grades), ...body, student_id: Number(body.student_id), subject_id: Number(body.subject_id), class_id: Number(body.class_id) || null, student_name: studentNameFor(body.student_id), subject_name: subjectNameFor(body.subject_id), class_name: classNameFor(body.class_id), average, remarks: remarksFor(average) };
+    grades.push(row);
+    return json(res, 201, row);
+  }
+  if (resource === 'grades' && req.method === 'PUT' && id) {
+    const body = await parseBody(req);
+    const index = grades.findIndex((row) => row.id === id);
+    if (index === -1) return json(res, 404, { message: 'Grade not found.' });
+    const average = Number(((Number(body.quiz) + Number(body.activity) + Number(body.exam) + Number(body.final_grade)) / 4).toFixed(2));
+    grades[index] = { ...grades[index], ...body, student_id: Number(body.student_id), subject_id: Number(body.subject_id), class_id: Number(body.class_id) || null, student_name: studentNameFor(body.student_id), subject_name: subjectNameFor(body.subject_id), class_name: classNameFor(body.class_id), average, remarks: remarksFor(average) };
+    return json(res, 200, grades[index]);
+  }
+  if (resource === 'grades' && req.method === 'DELETE' && id) {
+    const index = grades.findIndex((row) => row.id === id);
+    if (index > -1) grades.splice(index, 1);
+    return json(res, 200, { message: 'Grade deleted.' });
+  }
   if (resource === 'grades') return json(res, 200, grades);
+  if (resource === 'attendance' && req.method === 'POST') {
+    const body = await parseBody(req);
+    const row = { id: nextId(attendance), ...body, student_id: Number(body.student_id), subject_id: Number(body.subject_id), class_id: Number(body.class_id) || null, student_name: studentNameFor(body.student_id), subject_name: subjectNameFor(body.subject_id), class_name: classNameFor(body.class_id) };
+    attendance.push(row);
+    return json(res, 201, row);
+  }
+  if (resource === 'attendance' && req.method === 'DELETE' && id) {
+    const index = attendance.findIndex((row) => row.id === id);
+    if (index > -1) attendance.splice(index, 1);
+    return json(res, 200, { message: 'Attendance deleted.' });
+  }
   if (resource === 'attendance') return json(res, 200, attendance);
+  if (resource === 'comments' && req.method === 'POST') {
+    const body = await parseBody(req);
+    const teacher = teachers.find((item) => item.id === Number(body.teacher_id));
+    const row = { id: nextId(comments), student_id: Number(body.student_id), student_name: studentNameFor(body.student_id), teacher_id: Number(body.teacher_id), teacher_name: teacher?.name || 'Teacher', comment: body.comment, created_at: new Date().toISOString() };
+    comments.unshift(row);
+    return json(res, 201, row);
+  }
   if (resource === 'comments') return json(res, 200, comments);
   if (resource === 'reports') {
     const student = students.find((item) => item.id === id) || students[0];
-    const studentGrades = grades.filter((grade) => grade.student_id === student.id);
+    const studentGrades = groupedReportGrades(student.id);
     const average = Number((studentGrades.reduce((sum, grade) => sum + grade.average, 0) / Math.max(studentGrades.length, 1)).toFixed(2));
     return json(res, 200, {
       id: Date.now(),
       student,
       grades: studentGrades,
-      attendance: attendance.filter((row) => row.student_id === student.id),
+      attendance: attendanceSummary(student.id),
       comments: comments.filter((comment) => comment.student_id === student.id),
       average,
-      remarks: average < 75 ? 'Failed' : average < 82 ? 'Needs Improvement' : 'Passed'
+      remarks: remarksFor(average)
     });
   }
 

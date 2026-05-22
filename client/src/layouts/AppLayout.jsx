@@ -36,7 +36,7 @@ export default function AppLayout() {
         <div><p className="text-sm font-semibold">{user?.name}</p><p className="text-xs capitalize text-slate-500">{user?.role}</p></div>
         <button className="btn-muted" onClick={logout}><LogOut size={16} /> Logout</button>
       </header>
-      <div className="p-4 sm:p-6"><Outlet /></div>
+      <div className="page-shell p-4 sm:p-6"><Outlet /></div>
     </main>
   </div>;
 }

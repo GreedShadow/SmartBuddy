@@ -155,7 +155,19 @@ export async function buildReport(req, res) {
     FROM students s JOIN users u ON u.id=s.user_id LEFT JOIN classes c ON c.id=s.class_id WHERE s.id=:studentId
   `, { studentId });
   if (!students[0]) return res.status(404).json({ message: 'Student not found.' });
-  const grades = await query('SELECT g.*, sub.name AS subject_name FROM grades g JOIN subjects sub ON sub.id=g.subject_id WHERE student_id=:studentId ORDER BY term', { studentId });
+  const grades = await query(`
+    SELECT g.*, sub.name AS subject_name
+    FROM grades g
+    JOIN subjects sub ON sub.id=g.subject_id
+    JOIN (
+      SELECT subject_id, term, MAX(id) AS latest_id
+      FROM grades
+      WHERE student_id=:studentId
+      GROUP BY subject_id, term
+    ) latest ON latest.latest_id=g.id
+    WHERE g.student_id=:studentId
+    ORDER BY sub.name, g.term
+  `, { studentId });
   const attendance = await query('SELECT status, COUNT(*) AS count FROM attendance WHERE student_id=:studentId GROUP BY status', { studentId });
   const comments = await query('SELECT c.comment, c.created_at, u.name AS teacher_name FROM comments c JOIN teachers t ON t.id=c.teacher_id JOIN users u ON u.id=t.user_id WHERE c.student_id=:studentId ORDER BY c.created_at DESC', { studentId });
   const average = grades.length ? Number((grades.reduce((sum, g) => sum + Number(g.average), 0) / grades.length).toFixed(2)) : 0;

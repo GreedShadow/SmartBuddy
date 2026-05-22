@@ -33,6 +33,7 @@ export default function ManagePage({ type }) {
   async function remove(row) {
     if (!window.confirm(`Delete ${row.name || row.code}? This cannot be undone.`)) return;
     await api(`${m.endpoint}/${row.id}`, { method: 'DELETE' });
+    setRows((current) => (current || []).filter((item) => item.id !== row.id));
     setMessage('Record deleted.');
     load();
   }
@@ -53,7 +54,15 @@ export default function ManagePage({ type }) {
       </table> : <EmptyState text="Try a different search or add a new record." />}
     </div>
     {editing && <Modal title={`${editing.id ? 'Edit' : 'Add'} ${m.title.slice(0, -1)}`} onClose={() => setEditing(null)}>
-      <RecordForm type={type} record={editing} classes={classes} teachers={teachers} onSaved={() => { setEditing(null); setMessage('Record saved.'); load(); }} />
+      <RecordForm type={type} record={editing} classes={classes} teachers={teachers} onSaved={(saved) => {
+        setRows((current) => {
+          if (!current || !saved?.id) return current;
+          return editing.id ? current.map((item) => item.id === saved.id ? { ...item, ...saved } : item) : [saved, ...current];
+        });
+        setEditing(null);
+        setMessage('Record saved.');
+        load();
+      }} />
     </Modal>}
   </div>;
 }
@@ -83,8 +92,8 @@ function RecordForm({ type, record, classes, teachers, onSaved }) {
     setError('');
     try {
       const payload = normalize(type, form, record);
-      await api(record.id ? `${endpoint}/${record.id}` : endpoint, { method: record.id ? 'PUT' : 'POST', body: JSON.stringify(payload) });
-      onSaved();
+      const saved = await api(record.id ? `${endpoint}/${record.id}` : endpoint, { method: record.id ? 'PUT' : 'POST', body: JSON.stringify(payload) });
+      onSaved(saved);
     } catch (err) { setError(err.message); }
   }
 
